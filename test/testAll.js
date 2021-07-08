@@ -57,6 +57,36 @@ describe('Connect and Pair', () => {
     }
   });
 
+  it('Should test addAddr', async () => {
+    const addr = '0x' + require('crypto').randomBytes(20).toString('hex')
+    const data = {
+      name: 'My Special Contract',
+      address: addr,
+    }
+    await helpers.addAddress(client, data)
+    const txData = {
+      nonce: '0x02',
+      gasPrice: '0x1fe5d61a00',
+      gasLimit: '0x034e97',
+      to: addr,
+      value: '0x01cba1761f7ab9870c',
+      data: '0x17e914679b7e160613be4f8c2d3203d236286d74eb9192f6d6f71b9118a42bb033ccd8e8'
+    };
+    const req = {
+      currency: 'ETH',
+      data: {
+        signerPath: [helpers.BTC_LEGACY_PURPOSE, helpers.ETH_COIN, HARDENED_OFFSET, 0, 0],
+        ...txData,
+        chainId: 'rinkeby', // Can also be an integer
+      }
+    }
+    console.log('signing')
+    const tx = await helpers.sign(client, req);
+    console.log('tx', tx)
+    expect(tx.tx).to.not.equal(null);
+
+  })
+/*
   it('Should get addresses', async () => {
     expect(caughtErr).to.equal(false);
     if (caughtErr === false) {
@@ -453,5 +483,5 @@ describe('Connect and Pair', () => {
     expect(signResp.tx).to.not.equal(null);
 
   })
-
+*/
 });

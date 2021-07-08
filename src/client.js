@@ -324,6 +324,35 @@ class Client {
       this.addAbiDefs(defs, cb, nextCode, defs);
     })
   }
+
+  addAddress(data, cb) {
+    const fwConstants = getFwVersionConst(this.fwVersion)
+    if (!fwConstants.addAddress)
+      return cb('addAddress is not supported by your firmware version. Please update.')
+    const { addrStrMaxSz, addrNameMaxSz } = fwConstants.addAddress;
+    if (!data.name || !data.address)
+      return cb('"name" and "address" must be included')
+    if (data.name.length >= addrNameMaxSz)
+      return cb(`"name" string length must be <${addrNameMaxSz}`)
+    if (data.address.length >= addrStrMaxSz)
+      return cb(`"address" string length must be <${addrStrMaxSz}`)
+    if (typeof data.name !== 'string' || typeof data.address !== 'string')
+      return cb('"name" and "address" must be strings')
+    const payload = Buffer.alloc(addrNameMaxSz + addrStrMaxSz);
+    Buffer.from(data.address).copy(payload);
+    Buffer.from(data.name).copy(payload, addrStrMaxSz);
+    const param = this._buildEncRequest(encReqCodes.ADD_ADDRESS, payload);
+    return this._request(param, (err, res, responseCode) => {
+      if (responseCode && responseCode === responseCodes.RESP_ERR_ALREADY)
+        return cb('Address already has a name saved.')
+      else if (responseCode && responseCode !== responseCodes.RESP_SUCCESS)
+        return cb('Error making request.');
+      else if (err)
+        return cb(err);
+      this._handleEncResponse(res, decResLengths.addAddress);
+      return cb(null);
+    })
+  }
   
   addPermissionV0(opts, cb) {
     const { currency, timeWindow, limit, decimals, asset } = opts;
@@ -431,7 +460,6 @@ class Client {
     const payloadPreCs = Buffer.concat([Buffer.from([enc_request_code]), payload]);
     const cs = checksum(payloadPreCs);
     const payloadBuf = Buffer.alloc(payloadPreCs.length + 4);
-
     // Lattice validates checksums in little endian
     payloadPreCs.copy(payloadBuf, 0);
     payloadBuf.writeUInt32LE(cs, payloadPreCs.length);

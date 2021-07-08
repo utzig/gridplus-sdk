@@ -14,6 +14,7 @@ const decResLengths = {
     sign: 1090,                         // 1 DER signature for ETH, 10 for BTC + change pubkeyhash
     getWallets: 142,                    // 71 bytes per wallet record (response contains internal and external)
     addAbiDefs: 8,
+    addAddress: 0,
     test: 1646                          // Max size of test response payload
 }
 
@@ -55,7 +56,8 @@ const encReqCodes = {
     'GET_WALLETS': 0x04,
     'ADD_PERMISSION_V0': 0x05,
     'ADD_ABI_DEFS': 0x06,
-    'TEST': 0x07,
+    'ADD_ADDRESS': 0x07,
+    'TEST': 0x08,
 }
 
 const messageConstants = {
@@ -316,6 +318,14 @@ function getFwVersionConst(v) {
     }
     // Very old legacy versions do not give a version number
     const legacy = (v.length === 0);
+    // V0.10.10 introcued an addAddress route
+    if (!legacy && gte(v, [0, 10, 8])) { // TOOD: CHANGE TO 10, 10
+        c.addAddress = {
+            addrStrMaxSz: 132,  // buffer length (incl null)
+            addrNameMaxSz: 132, // buffer length (incl null)
+        }
+    }
+
     // V0.10.8 allows a user to sign a prehashed transaction if the payload
     // is too big
     if (!legacy && gte(v, [0, 10, 8])) {

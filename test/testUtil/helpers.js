@@ -107,6 +107,15 @@ function addAbi(client, opts) {
   })
 }
 
+function addAddress(client, opts) {
+  return new Promise((resolve, reject) => {
+    client.addAddress(opts, (err) => {
+      if (err) return reject(err);
+      return resolve();
+    })
+  })
+}
+
 const unharden = (x) => { 
   return x >= HARDENED_OFFSET ? x - HARDENED_OFFSET : x; 
 }
@@ -331,6 +340,7 @@ exports.sign = sign;
 exports.addPermissionV0 = addPermissionV0;
 exports.test = test;
 exports.addAbi = addAbi;
+exports.addAddress = addAddress;
 exports.stripDER = stripDER;
 exports.setup_btc_sig_test = setup_btc_sig_test;
 
