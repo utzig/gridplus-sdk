@@ -100,6 +100,7 @@ async function testTxPass(req) {
   expect(txIsNull).to.equal(false);
   // Check the transaction data against a reference implementation
   const txData = {
+    type: req.data.type || null,
     nonce: req.data.nonce,
     to: req.data.to,
     gasPrice: req.data.gasPrice,
@@ -108,13 +109,23 @@ async function testTxPass(req) {
     value: req.data.value,
     chainId: new BN(req.data.chainId, 16).toNumber(),
   };
+  if (req.data.maxFeePerGas)
+    txData.maxFeePerGas = req.data.maxFeePerGas;
+  if (req.data.maxPriorityFeePerGas)
+    txData.maxPriorityFeePerGas = req.data.maxPriorityFeePerGas;
   const sigData = {
     v: parseInt(`0x${tx.sig.v.toString('hex')}`),
     r: `0x${tx.sig.r}`,
     s: `0x${tx.sig.s}`,
   }
-  // Non-EIP155 transactions need to have `chainId=0` for ethers.js
-  if (sigData.v <= 28)
+  // When using `recoveryParam` rather than `v` (e.g. for EIP1559 or EIP2930 txs)
+  // we get either 0 or 1, with 0 represented with an empty buffer.
+  // We need to convert that here.
+  if (isNaN(sigData.v))
+    sigData.v = 0;
+  // Non-EIP155 legacy transactions need to have `chainId=0` for ethers.js
+  // (legacy means `type` is `null` or `0`)
+  if ((req.data.type === null || req.data.type === 0) && sigData.v <= 28)
     txData.chainId = 0;
   // There is one test where we submit an address without the prefix
   if (txData.to.slice(0, 2) !== '0x')
@@ -122,7 +133,6 @@ async function testTxPass(req) {
   const expectedTx = EthTx.serialize(txData, sigData)
   if (tx.tx !== expectedTx) {
     foundError = true;
-    console.error('Invalid tx resp!', JSON.stringify(txData))
   }
   expect(tx.tx).to.equal(expectedTx);
   return tx
@@ -164,6 +174,53 @@ describe('Setup client', () => {
     // Build the random transactions
     buildRandomTxData(fwConstants);
   });
+})
+
+describe('Test new transaction types',  () => {
+  it('Should test eip1559 with no access list', async () => {
+    const txData = {
+      chainId: 1,
+      type: 2,
+      maxFeePerGas: 1200000000,
+      maxPriorityFeePerGas: 1000,
+      nonce: 0,
+      gasPrice: 1200000000,
+      gasLimit: 50000,
+      to: '0xe242e54155b1abc71fc118065270cecaaf8b7768',
+      value: 100,
+      data: null,
+    };
+    await testTxPass(buildTxReq(txData))
+  })
+/*
+  it('Should test eip1559 with an access list (should pre-hash)', async () => {
+    const txData = {
+      chainId: 1,
+      type: 2,
+      maxFeePerGas: 1200000000,
+      maxPriorityFeePerGas: 1000,
+      nonce: 0,
+      gasPrice: 1200000000,
+      gasLimit: 50000,
+      to: '0xe242e54155b1abc71fc118065270cecaaf8b7768',
+      value: 100,
+      data: null,
+      accessList: [
+        { 
+          address: '0xe242e54155b1abc71fc118065270cecaaf8b7768', 
+          storageKeys: [
+            '0x7154f8b310ad6ce97ce3b15e3419d9863865dfe2d8635802f7f4a52a206255a6'
+          ]
+        },
+        { 
+          address: '0xe0f8ff08ef0242c461da688b8b85e438db724860', 
+          storageKeys: []
+        }
+      ]
+    };
+    await testTxPass(buildTxReq(txData))
+  })
+*/
 })
 
 if (!process.env.skip) {
