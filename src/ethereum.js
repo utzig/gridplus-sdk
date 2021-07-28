@@ -167,9 +167,8 @@ exports.buildEthereumTxRequest = function(data) {
     let ETH_TX_NON_DATA_SZ = 122; // Accounts for metadata and non-data params
     if (fwConstants.allowedEthTxTypesVersion === 1) {
       // eip1559 and eip2930
-      const { maxListSz, maxNumStorageKeys } = fwConstants.accessListParams;
       // Add extra params and shrink the data region (extraData blocks are unaffected)
-      ETH_TX_NON_DATA_SZ += 18 + (maxListSz * (20 + (maxNumStorageKeys * 32)));
+      ETH_TX_NON_DATA_SZ += 10
       MAX_BASE_DATA_SZ -= ETH_TX_NON_DATA_SZ;
     }
     const txReqPayload = Buffer.alloc(MAX_BASE_DATA_SZ + ETH_TX_NON_DATA_SZ);
@@ -221,7 +220,13 @@ exports.buildEthereumTxRequest = function(data) {
     valueBytes.copy(txReqPayload, off + (32 - valueBytes.length)); off += 32;
 
     // Extra Tx data comes before `data` in the struct
+    let PREHASH_UNSUPPORTED = false;
     if (fwConstants.allowedEthTxTypesVersion === 1) {
+      // Some types may not be supported by firmware, so we will need to prehash
+      if (PREHASH_FROM_ACCESS_LIST) {
+        PREHASH_UNSUPPORTED = true;
+      }
+      txReqPayload.writeUint8(PREHASH_UNSUPPORTED === true, off); off += 1;  
       // EIP1559 & EIP2930 struct version
       if (isEip1559) {
         txReqPayload.writeUint8(2, off); off += 1; // Eip1559 type enum value
@@ -255,7 +260,7 @@ exports.buildEthereumTxRequest = function(data) {
         dataBytes.copy(dataToCopy, 0);
       }
 
-      if (prehashAllowed && (totalSz > maxSzAllowed || PREHASH_FROM_ACCESS_LIST)) {
+      if (prehashAllowed && (totalSz > maxSzAllowed || PREHASH_UNSUPPORTED)) {
         // If this payload is too large to send, but the Lattice allows a prehashed message, do that
         prehash = Buffer.from(keccak256(rlp.encode(rawTx)), 'hex')
       } else {
@@ -313,16 +318,19 @@ function stripZeros(a) {
 // Given a 64-byte signature [r,s] we need to figure out the v value
 // and attah the full signature to the end of the transaction payload
 exports.buildEthRawTx = function(tx, sig, address) {
+  console.log('buildEThRawTx')
   // RLP-encode the data we sent to the lattice
   let rlpEncoded = rlp.encode(tx.rawTx);
   if (tx.type) {
     rlpEncoded = Buffer.concat([Buffer.from([tx.type]), rlpEncoded])
   }
+  console.log('rlp decoded', rlp.decode(rlpEncoded))
   const hash = Buffer.from(keccak256(rlpEncoded), 'hex')
+  console.log('hash', new Uint8Array(hash))
   const newSig = addRecoveryParam(hash, sig, address, tx);
   // Use the signature to generate a new raw transaction payload
   // Strip the last 3 items and replace them with signature components
-  const newRawTx = tx.rawTx.slice(0, -3);
+  const newRawTx = tx.useEIP155 ? tx.rawTx.slice(0, -3) : tx.rawTx;
   newRawTx.push(newSig.v);
   // Per `ethereumjs-tx`, RLP encoding should include signature components w/ stripped zeros
   // See: https://github.com/ethereumjs/ethereumjs-tx/blob/master/src/transaction.ts#L187
@@ -338,6 +346,7 @@ exports.buildEthRawTx = function(tx, sig, address) {
 // Attach a recovery parameter to a signature by brute-forcing ECRecover
 function addRecoveryParam(hashBuf, sig, address, txData={}) {
   try {
+    console.log('addRecoveryparam')
     // Rebuild the keccak256 hash here so we can `ecrecover`
     const hash = new Uint8Array(hashBuf);
     let v = 0;
@@ -359,6 +368,7 @@ function addRecoveryParam(hashBuf, sig, address, txData={}) {
       sig.v  = getRecoveryParam(v, txData);
       return sig;
     } else {
+      console.log('bad sig')
       // If neither is a match, we should return an error
       throw new Error('Invalid Ethereum signature returned.');
     }
